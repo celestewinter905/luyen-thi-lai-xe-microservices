@@ -89,6 +89,10 @@ services:
         paths:
           - /notifications
         strip_path: false
+      - name: notification-admin-route
+        paths:
+          - /admin/academic-warnings
+        strip_path: false
       - name: notification-swagger-route
         paths:
           - /notification-service

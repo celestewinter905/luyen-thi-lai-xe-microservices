@@ -1,6 +1,9 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
-import { NotificationType } from '@prisma/notification-client';
+import {
+  NotificationStatus,
+  NotificationType,
+} from '@prisma/notification-client';
 import { NotificationRecord } from '../../domain/repositories/notification.repository';
 
 export class SendAcademicWarningRequestDto {
@@ -24,6 +27,17 @@ export class SendAcademicWarningRequestDto {
   message!: string;
 }
 
+export class AcademicWarningAcceptedResponseDto {
+  @ApiProperty({ example: 'ACCEPTED' })
+  status!: string;
+
+  @ApiProperty({
+    description:
+      'Indicates the warning was queued asynchronously for delivery to the student.',
+  })
+  message!: string;
+}
+
 export class ListNotificationsQueryDto {
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()
@@ -38,13 +52,19 @@ export class NotificationResponseDto {
   @ApiProperty() id!: string;
   @ApiProperty() userId!: string;
   @ApiProperty({ enum: NotificationType }) type!: NotificationType;
+  @ApiProperty({ nullable: true }) eventType!: string | null;
   @ApiProperty() title!: string;
   @ApiProperty() body!: string;
   @ApiProperty() data!: unknown;
+  @ApiProperty({ enum: NotificationStatus }) status!: NotificationStatus;
+  @ApiProperty() retryCount!: number;
+  @ApiProperty({ nullable: true }) errorMessage!: string | null;
   @ApiProperty() isRead!: boolean;
   @ApiProperty({ nullable: true }) readAt!: Date | null;
   @ApiProperty({ nullable: true }) sentAt!: Date | null;
+  @ApiProperty({ nullable: true }) deliveredAt!: Date | null;
   @ApiProperty() createdAt!: Date;
+  @ApiProperty() updatedAt!: Date;
 
   static fromRecord(record: NotificationRecord): NotificationResponseDto {
     return Object.assign(new NotificationResponseDto(), record);

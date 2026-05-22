@@ -1,16 +1,25 @@
-import { NotificationType } from '@prisma/notification-client';
+import {
+  NotificationStatus,
+  NotificationType,
+} from '@prisma/notification-client';
 
 export interface NotificationRecord {
   id: string;
   userId: string;
   type: NotificationType;
+  eventType: string | null;
   title: string;
   body: string;
   data: unknown;
+  status: NotificationStatus;
+  retryCount: number;
+  errorMessage: string | null;
   isRead: boolean;
   readAt: Date | null;
   sentAt: Date | null;
+  deliveredAt: Date | null;
   createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface AcademicWarningRecord {
@@ -23,15 +32,31 @@ export interface AcademicWarningRecord {
   createdAt: Date;
 }
 
+export interface CreateNotificationInput {
+  userId: string;
+  title: string;
+  body: string;
+  data?: unknown;
+  type?: NotificationType;
+  eventType?: string;
+  status?: NotificationStatus;
+  retryCount?: number;
+  errorMessage?: string | null;
+  sentAt?: Date;
+  deliveredAt?: Date;
+}
+
+export interface UpdateDeliveryStatusInput {
+  status: NotificationStatus;
+  retryCount?: number;
+  errorMessage?: string | null;
+  deliveredAt?: Date | null;
+}
+
 export abstract class NotificationRepository {
-  abstract createNotification(input: {
-    userId: string;
-    title: string;
-    body: string;
-    data?: unknown;
-    type?: NotificationType;
-    sentAt?: Date;
-  }): Promise<NotificationRecord>;
+  abstract createNotification(
+    input: CreateNotificationInput,
+  ): Promise<NotificationRecord>;
 
   abstract createAcademicWarning(input: {
     studentId: string;
@@ -51,4 +76,9 @@ export abstract class NotificationRepository {
   }>;
 
   abstract markRead(id: string, userId: string): Promise<NotificationRecord>;
+
+  abstract updateDeliveryStatus(
+    id: string,
+    input: UpdateDeliveryStatusInput,
+  ): Promise<NotificationRecord>;
 }

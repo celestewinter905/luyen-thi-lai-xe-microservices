@@ -387,6 +387,8 @@ services:
         condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
+      mailpit:
+        condition: service_started
 
   analytics-service:
     build:

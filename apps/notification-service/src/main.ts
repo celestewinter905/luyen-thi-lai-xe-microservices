@@ -1,9 +1,9 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
-import { NestFactory } from '@nestjs/core';
-import { ConfigService } from '@nestjs/config';
 import { ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { NestFactory } from '@nestjs/core';
 import { MicroserviceOptions, Transport } from '@nestjs/microservices';
 import {
   ApiExceptionFilter,
@@ -19,14 +19,15 @@ async function bootstrap() {
     configService.get<string>('rabbitmq.url') ?? 'amqp://localhost:5672';
   const port = configService.get<number>('port') ?? 3000;
 
+  app.enableCors();
   app.useGlobalInterceptors(new ApiResponseInterceptor());
   app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }));
   app.useGlobalFilters(new ApiExceptionFilter());
 
-  // Cấu hình Swagger
   setupMicroserviceSwagger(app, {
     title: 'Notification Service API',
-    description: 'Quản lý thông báo và cập nhật trạng thái thi cho người dùng',
+    description:
+      'Asynchronous notification dispatch (in-app, email via SMTP/Mailpit, FCM push). Consumes RabbitMQ events with retry-with-delay and DLQ.',
   });
 
   app.connectMicroservice<MicroserviceOptions>({
@@ -41,6 +42,7 @@ async function bootstrap() {
 
   await app.startAllMicroservices();
   await app.listen(port);
-  console.log(`âœ“ Notification Service listening on port ${port}`);
+  console.log(`✓ Notification Service listening on port ${port}`);
+  console.log(`  Metrics: http://localhost:${port}/metrics`);
 }
 void bootstrap();
