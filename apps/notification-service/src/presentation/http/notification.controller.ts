@@ -2,6 +2,8 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Patch,
   Post,
@@ -9,12 +11,13 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuthenticatedUser, Roles } from 'nest-keycloak-connect';
+import { NotificationEventPublisher } from '../../application/ports/event-publisher.port';
 import {
   ListNotificationsUseCase,
   MarkNotificationReadUseCase,
-  SendAcademicWarningUseCase,
 } from '../../application/use-cases/notification.use-cases';
 import {
+  AcademicWarningAcceptedResponseDto,
   ListNotificationsQueryDto,
   ListNotificationsResponseDto,
   NotificationResponseDto,
@@ -30,26 +33,34 @@ interface JwtPayload {
 @Controller()
 export class NotificationController {
   constructor(
-    private readonly sendAcademicWarningUseCase: SendAcademicWarningUseCase,
     private readonly listNotificationsUseCase: ListNotificationsUseCase,
     private readonly markNotificationReadUseCase: MarkNotificationReadUseCase,
+    private readonly eventPublisher: NotificationEventPublisher,
   ) {}
 
   @Post('admin/academic-warnings')
+  @HttpCode(HttpStatus.ACCEPTED)
   @Roles({ roles: ['realm:ADMIN', 'realm:CENTER_MANAGER', 'realm:INSTRUCTOR'] })
-  @ApiOperation({ summary: 'Send academic warning to a student' })
+  @ApiOperation({
+    summary:
+      'Queue an academic warning notification for a student (async, returns 202).',
+  })
   async sendAcademicWarning(
     @AuthenticatedUser() user: JwtPayload,
     @Body() dto: SendAcademicWarningRequestDto,
-  ): Promise<NotificationResponseDto> {
-    const result = await this.sendAcademicWarningUseCase.execute({
+  ): Promise<AcademicWarningAcceptedResponseDto> {
+    await this.eventPublisher.publish('notification.academic-warning.queued', {
       studentId: dto.studentId,
       reason: dto.reason,
       severity: dto.severity,
       message: dto.message,
       createdById: user.sub ?? '',
     });
-    return NotificationResponseDto.fromRecord(result);
+    return {
+      status: 'ACCEPTED',
+      message:
+        'Academic warning queued; the student will be notified asynchronously.',
+    };
   }
 
   @Get('notifications/me')

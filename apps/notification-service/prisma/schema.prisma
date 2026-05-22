@@ -15,19 +15,33 @@ enum NotificationType {
   SMS
 }
 
+enum NotificationStatus {
+  PENDING
+  QUEUED
+  DELIVERED
+  FAILED
+}
+
 model Notification {
-  id        String           @id @default(uuid())
-  userId    String
-  type      NotificationType @default(IN_APP)
-  title     String           @db.Text
-  body      String           @db.Text
-  data      Json             @default("{}")
-  isRead    Boolean          @default(false)
-  readAt    DateTime?
-  sentAt    DateTime?
-  createdAt DateTime         @default(now())
+  id           String             @id @default(uuid())
+  userId       String
+  type         NotificationType   @default(IN_APP)
+  eventType    String?
+  title        String             @db.Text
+  body         String             @db.Text
+  data         Json               @default("{}")
+  status       NotificationStatus @default(DELIVERED)
+  retryCount   Int                @default(0)
+  errorMessage String?            @db.Text
+  isRead       Boolean            @default(false)
+  readAt       DateTime?
+  sentAt       DateTime?
+  deliveredAt  DateTime?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
 
   @@index([userId, isRead, createdAt])
+  @@index([userId, status])
   @@map("notifications")
 }
 
@@ -42,4 +56,16 @@ model AcademicWarning {
 
   @@index([studentId, createdAt])
   @@map("academic_warnings")
+}
+
+model DeviceToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  platform  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("device_tokens")
 }

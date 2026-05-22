@@ -5,32 +5,6 @@ import {
 } from '../../domain/repositories/notification.repository';
 
 @Injectable()
-export class SendAcademicWarningUseCase {
-  constructor(private readonly repository: NotificationRepository) {}
-
-  async execute(input: {
-    studentId: string;
-    reason: string;
-    severity: string;
-    message: string;
-    createdById: string;
-  }): Promise<NotificationRecord> {
-    const warning = await this.repository.createAcademicWarning(input);
-    return this.repository.createNotification({
-      userId: input.studentId,
-      title: `Academic warning: ${input.severity}`,
-      body: input.message,
-      data: {
-        warningId: warning.id,
-        reason: input.reason,
-        severity: input.severity,
-      },
-      sentAt: new Date(),
-    });
-  }
-}
-
-@Injectable()
 export class ListNotificationsUseCase {
   constructor(private readonly repository: NotificationRepository) {}
 

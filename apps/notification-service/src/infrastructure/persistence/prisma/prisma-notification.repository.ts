@@ -1,9 +1,15 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { NotificationType, Prisma } from '@prisma/notification-client';
+import {
+  NotificationStatus,
+  NotificationType,
+  Prisma,
+} from '@prisma/notification-client';
 import {
   AcademicWarningRecord,
+  CreateNotificationInput,
   NotificationRecord,
   NotificationRepository,
+  UpdateDeliveryStatusInput,
 } from '../../../domain/repositories/notification.repository';
 import { PrismaService } from './prisma.service';
 
@@ -13,22 +19,25 @@ export class PrismaNotificationRepository extends NotificationRepository {
     super();
   }
 
-  async createNotification(input: {
-    userId: string;
-    title: string;
-    body: string;
-    data?: unknown;
-    type?: NotificationType;
-    sentAt?: Date;
-  }): Promise<NotificationRecord> {
+  async createNotification(
+    input: CreateNotificationInput,
+  ): Promise<NotificationRecord> {
+    const sentAt =
+      input.sentAt ??
+      (input.status === NotificationStatus.DELIVERED ? new Date() : null);
     return this.prisma.notification.create({
       data: {
         userId: input.userId,
         title: input.title,
         body: input.body,
         type: input.type ?? NotificationType.IN_APP,
+        eventType: input.eventType ?? null,
         data: (input.data ?? {}) as Prisma.InputJsonValue,
-        sentAt: input.sentAt ?? new Date(),
+        status: input.status ?? NotificationStatus.DELIVERED,
+        retryCount: input.retryCount ?? 0,
+        errorMessage: input.errorMessage ?? null,
+        sentAt: sentAt,
+        deliveredAt: input.deliveredAt ?? null,
       },
     });
   }
@@ -69,6 +78,25 @@ export class PrismaNotificationRepository extends NotificationRepository {
     return this.prisma.notification.update({
       where: { id },
       data: { isRead: true, readAt: new Date() },
+    });
+  }
+
+  async updateDeliveryStatus(
+    id: string,
+    input: UpdateDeliveryStatusInput,
+  ): Promise<NotificationRecord> {
+    return this.prisma.notification.update({
+      where: { id },
+      data: {
+        status: input.status,
+        retryCount: input.retryCount,
+        errorMessage: input.errorMessage,
+        deliveredAt: input.deliveredAt,
+        sentAt:
+          input.status === NotificationStatus.DELIVERED
+            ? (input.deliveredAt ?? new Date())
+            : undefined,
+      },
     });
   }
 }
