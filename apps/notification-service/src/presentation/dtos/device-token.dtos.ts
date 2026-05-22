@@ -2,7 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsIn, IsNotEmpty, IsString } from 'class-validator';
 
 export class RegisterDeviceTokenRequestDto {
-  @ApiProperty({ description: 'FCM/APNs device token' })
+  @ApiProperty({ description: 'Device token FCM/APNs của thiết bị' })
   @IsString()
   @IsNotEmpty()
   token!: string;

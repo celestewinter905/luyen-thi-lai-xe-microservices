@@ -18,10 +18,10 @@ export class RabbitMqNotificationEventPublisher extends NotificationEventPublish
   async publish(eventName: string, payload: unknown): Promise<void> {
     try {
       await lastValueFrom(this.client.emit(eventName, payload));
-      this.logger.log(`Published event: ${eventName}`);
+      this.logger.log(`Đã publish event: ${eventName}`);
     } catch (error) {
       this.logger.error(
-        `Failed to publish event ${eventName}: ${(error as Error).message}`,
+        `Publish event ${eventName} thất bại: ${(error as Error).message}`,
       );
       throw error;
     }

@@ -39,7 +39,8 @@ export class DeviceTokenController {
     ],
   })
   @ApiOperation({
-    summary: 'Register a device token for the current user (push delivery)',
+    summary:
+      'Đăng ký device token của người dùng hiện tại để nhận push notification',
   })
   async register(
     @AuthenticatedUser() user: JwtPayload,
@@ -63,7 +64,7 @@ export class DeviceTokenController {
       'realm:STUDENT',
     ],
   })
-  @ApiOperation({ summary: 'Unregister a device token by value' })
+  @ApiOperation({ summary: 'Huỷ đăng ký một device token theo giá trị token' })
   async unregister(@Param('token') token: string): Promise<void> {
     await this.unregisterDeviceTokenUseCase.execute(token);
   }

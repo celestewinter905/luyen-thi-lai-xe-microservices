@@ -35,7 +35,7 @@ export class RetryPublisher implements OnModuleInit, OnModuleDestroy {
       await this.connection?.close();
     } catch (error) {
       this.logger.warn(
-        `Failed to close retry publisher channel: ${(error as Error).message}`,
+        `Đóng channel retry publisher thất bại: ${(error as Error).message}`,
       );
     }
   }
@@ -54,7 +54,7 @@ export class RetryPublisher implements OnModuleInit, OnModuleDestroy {
     }
     const ch = this.channel;
     if (!ch) {
-      throw new Error('Retry channel is not available');
+      throw new Error('Channel retry không sẵn sàng');
     }
     const basePayload =
       input.payload && typeof input.payload === 'object'
@@ -78,7 +78,7 @@ export class RetryPublisher implements OnModuleInit, OnModuleDestroy {
       },
     );
     this.logger.log(
-      `Scheduled retry #${input.retryCount} for ${input.eventPattern}`,
+      `Đã đặt lịch retry lần #${input.retryCount} cho ${input.eventPattern}`,
     );
   }
 
@@ -86,10 +86,10 @@ export class RetryPublisher implements OnModuleInit, OnModuleDestroy {
     try {
       this.connection = await amqp.connect(this.url);
       this.channel = await this.connection.createChannel();
-      this.logger.log('Retry publisher connected to RabbitMQ');
+      this.logger.log('Retry publisher đã kết nối RabbitMQ');
     } catch (error) {
       this.logger.error(
-        `Retry publisher failed to connect: ${(error as Error).message}`,
+        `Retry publisher kết nối thất bại: ${(error as Error).message}`,
       );
     }
   }

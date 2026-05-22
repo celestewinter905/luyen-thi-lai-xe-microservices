@@ -99,7 +99,7 @@ export class NotificationDispatcher {
     if (channel === NotificationType.EMAIL) {
       if (!input.recipientEmail) {
         throw new Error(
-          `Cannot send EMAIL notification ${record.id}: recipient email is missing`,
+          `Không thể gửi thông báo EMAIL ${record.id}: thiếu địa chỉ email của người nhận`,
         );
       }
       await this.mailProvider.send({
@@ -115,7 +115,7 @@ export class NotificationDispatcher {
       const tokens = await this.deviceTokenRepository.findByUser(input.userId);
       if (tokens.length === 0) {
         this.logger.warn(
-          `User ${input.userId} has no device tokens; skipping push for ${record.id}`,
+          `Người dùng ${input.userId} chưa đăng ký device token nào; bỏ qua push cho ${record.id}`,
         );
         return;
       }
@@ -131,11 +131,11 @@ export class NotificationDispatcher {
       if (result.invalidTokens.length > 0) {
         await this.deviceTokenRepository.deleteManyTokens(result.invalidTokens);
         this.logger.log(
-          `Removed ${result.invalidTokens.length} invalid device tokens`,
+          `Đã xóa ${result.invalidTokens.length} device token không hợp lệ`,
         );
       }
       if (result.successCount === 0 && tokens.length > 0) {
-        throw new Error('All push deliveries failed');
+        throw new Error('Tất cả push của thông báo này đều gửi thất bại');
       }
       return;
     }

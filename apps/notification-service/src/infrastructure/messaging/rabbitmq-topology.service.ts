@@ -82,11 +82,11 @@ export class RabbitMqTopologyService implements OnModuleInit, OnModuleDestroy {
       );
 
       this.logger.log(
-        `RabbitMQ topology ready: ${NOTIFICATION_QUEUE} <-> ${NOTIFICATION_RETRY_QUEUE} (TTL=${retryIntervalMs}ms) -> ${NOTIFICATION_DLQ}`,
+        `RabbitMQ topology sẵn sàng: ${NOTIFICATION_QUEUE} <-> ${NOTIFICATION_RETRY_QUEUE} (TTL=${retryIntervalMs}ms) -> ${NOTIFICATION_DLQ}`,
       );
     } catch (error) {
       this.logger.error(
-        `Failed to declare RabbitMQ topology: ${(error as Error).message}`,
+        `Khai báo RabbitMQ topology thất bại: ${(error as Error).message}`,
       );
       // Do not crash the service: messaging consumers will still attach to the
       // main queue once it becomes available; the consul/rabbitmq healthchecks
@@ -100,7 +100,7 @@ export class RabbitMqTopologyService implements OnModuleInit, OnModuleDestroy {
       await this.connection?.close();
     } catch (error) {
       this.logger.warn(
-        `Failed to close RabbitMQ topology channel: ${(error as Error).message}`,
+        `Đóng channel RabbitMQ topology thất bại: ${(error as Error).message}`,
       );
     }
   }

@@ -28,8 +28,8 @@ export class FcmPushProvider extends PushProvider implements OnModuleInit {
     );
     if (!credentialsRaw) {
       this.logger.warn(
-        'push.fcmCredentials is empty; push notifications are disabled. ' +
-          'Provide FCM service account JSON to enable.',
+        'push.fcmCredentials đang trống; push notification đã bị tắt. ' +
+          'Cung cấp JSON service account của FCM để bật lại.',
       );
       return;
     }
@@ -39,10 +39,10 @@ export class FcmPushProvider extends PushProvider implements OnModuleInit {
       this.app = admin.apps.length
         ? admin.app()
         : admin.initializeApp({ credential: admin.credential.cert(parsed) });
-      this.logger.log('Firebase Admin initialized for FCM push delivery');
+      this.logger.log('Firebase Admin đã khởi tạo cho việc gửi push FCM');
     } catch (error) {
       this.logger.error(
-        `Failed to initialize Firebase Admin: ${(error as Error).message}`,
+        `Khởi tạo Firebase Admin thất bại: ${(error as Error).message}`,
       );
       this.app = null;
     }
@@ -54,7 +54,7 @@ export class FcmPushProvider extends PushProvider implements OnModuleInit {
   ): Promise<PushSendResult> {
     if (!this.app) {
       this.logger.warn(
-        `FCM is not configured; skipping push to ${tokens.length} tokens`,
+        `FCM chưa được cấu hình; bỏ qua push tới ${tokens.length} token`,
       );
       return { successCount: 0, failureCount: 0, invalidTokens: [] };
     }
@@ -73,7 +73,7 @@ export class FcmPushProvider extends PushProvider implements OnModuleInit {
       if (!resp.success) {
         const code = resp.error?.code ?? '';
         this.logger.warn(
-          `Push delivery failed for token index ${idx}: ${code} ${resp.error?.message ?? ''}`,
+          `Gửi push thất bại cho token index ${idx}: ${code} ${resp.error?.message ?? ''}`,
         );
         if (INVALID_TOKEN_ERRORS.has(code)) {
           invalidTokens.push(tokens[idx]);

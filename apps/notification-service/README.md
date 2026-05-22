@@ -1,12 +1,12 @@
 # Notification Service
 
-Asynchronous notification dispatcher for the **Luyện thi lái xe** platform. It owns the in-app notification feed, the academic warning record, the FCM device-token registry, and the SMTP / Push fan-out workers. All cross-service inputs arrive as RabbitMQ events; HTTP endpoints are intentionally thin and either read state (`GET /notifications/me`) or enqueue events (`POST /admin/academic-warnings`).
+Dịch vụ gửi thông báo bất đồng bộ cho nền tảng **Luyện thi lái xe**. Service chịu trách nhiệm: bảng tin in-app, lưu cảnh báo học tập, đăng ký device token cho FCM, và worker fan-out qua SMTP / Push. Mọi đầu vào liên-service đều đi qua RabbitMQ event; tầng HTTP cố tình giữ mỏng — chỉ làm việc đọc trạng thái (`GET /notifications/me`) hoặc đẩy event vào hàng đợi (`POST /admin/academic-warnings`).
 
-This service follows the monorepo conventions documented in [`CLAUDE.md`](../../CLAUDE.md), [`guides/ddd+clean/CONVENTIONS.md`](../../guides/ddd+clean/CONVENTIONS.md), and the detailed plan in [`development-guides-notification-service.md`](./development-guides-notification-service.md). The public API contract is in [`guides/api/api-spec-notification.md`](../../guides/api/api-spec-notification.md).
+Service tuân thủ convention chung được mô tả trong [`CLAUDE.md`](../../CLAUDE.md), [`guides/ddd+clean/CONVENTIONS.md`](../../guides/ddd+clean/CONVENTIONS.md), và plan chi tiết trong [`development-guides-notification-service.md`](./development-guides-notification-service.md). Hợp đồng API công khai nằm tại [`guides/api/api-spec-notification.md`](../../guides/api/api-spec-notification.md).
 
 ---
 
-## 1. Architecture
+## 1. Kiến trúc tổng quan
 
 ```
                                  ┌──────────────────────────────────────────┐
@@ -21,7 +21,7 @@ This service follows the monorepo conventions documented in [`CLAUDE.md`](../../
                                  │          │ retry             │          │
                                  │   ┌──────▼───────┐    ┌──────▼─────────┐│
                                  │   │ Retry Pub.   │    │ Dispatcher     ││
-                                 │   │ (TTL 5 min)  │    │  (IN_APP +     ││
+                                 │   │ (TTL 5 phút) │    │  (IN_APP +     ││
                                  │   └──────────────┘    │   EMAIL + PUSH)││
                                  │                       └──┬─────┬───────┘│
                                  │                          │     │        │
@@ -29,28 +29,28 @@ This service follows the monorepo conventions documented in [`CLAUDE.md`](../../
                                  │     ▼                          ▼        │
                                  │  Postgres (notifications,   SMTP        │
                                  │  academic_warnings,         (Mailpit /  │
-                                 │  device_tokens)             real)       │
+                                 │  device_tokens)             thật)       │
                                  │                          + Firebase FCM │
                                  │                                          │
                                  │  /metrics (Prometheus)                   │
                                  └──────────────────────────────────────────┘
 ```
 
-Layout (Clean Architecture):
+Cấu trúc thư mục theo Clean Architecture:
 
 ```
 src/
-├── domain/                        // repositories, value contracts (no Nest/Prisma)
+├── domain/                        // repository + value contract (không phụ thuộc Nest/Prisma)
 │   └── repositories/
 │       ├── notification.repository.ts
 │       └── device-token.repository.ts
-├── application/                   // use cases + ports
+├── application/                   // use case + port
 │   ├── ports/
 │   │   ├── mail.provider.ts
 │   │   ├── push.provider.ts
 │   │   └── event-publisher.port.ts
 │   └── use-cases/
-│       ├── notification-dispatcher.service.ts  // shared fan-out logic
+│       ├── notification-dispatcher.service.ts  // logic fan-out dùng chung
 │       ├── send-welcome-email.use-case.ts
 │       ├── send-exam-result.use-case.ts
 │       ├── send-academic-warning.use-case.ts
@@ -69,17 +69,17 @@ src/
 │   │   └── fcm-push.provider.ts                // firebase-admin
 │   ├── messaging/
 │   │   ├── rabbitmq.constants.ts
-│   │   ├── rabbitmq-topology.service.ts        // declares queues + DLQ
-│   │   ├── retry.publisher.ts                  // republish to retry queue
-│   │   └── notification-event.publisher.ts     // publish events
+│   │   ├── rabbitmq-topology.service.ts        // khai báo queue + DLQ
+│   │   ├── retry.publisher.ts                  // publish vào retry queue
+│   │   └── notification-event.publisher.ts     // publish event tự phát
 │   └── metrics/
-│       └── notification.metrics.ts             // prom-client counters/gauges
+│       └── notification.metrics.ts             // counter/gauge của prom-client
 └── presentation/
     ├── http/
     │   ├── notification.controller.ts
     │   └── device-token.controller.ts
     ├── messaging/
-    │   └── messaging.controller.ts             // RMQ @EventPattern handlers
+    │   └── messaging.controller.ts             // các handler @EventPattern qua RMQ
     └── dtos/
         ├── notification.dtos.ts
         └── device-token.dtos.ts
@@ -87,92 +87,92 @@ src/
 
 ---
 
-## 2. Runtime Flow
+## 2. Luồng hoạt động khi runtime
 
-### 2.1 Event consumption with retry-and-DLQ
+### 2.1 Tiêu thụ event kèm retry + DLQ
 
-The topology service declares the following at boot:
+Khi khởi động, `RabbitMqTopologyService` khai báo sẵn các thành phần sau:
 
-| Component | Purpose |
+| Thành phần | Mục đích |
 | --- | --- |
-| Queue `notification_service_events` | Main queue all upstream services publish to (durable, `noAck=false`). Dead-letter exchange points to `notification.dlx`. |
-| Exchange `notification.retry` (fanout) → Queue `notification_service_retry` | Holds retry envelopes for `retry.intervalMs` (default 5 min). When the TTL expires, RabbitMQ routes the message back to `notification_service_events` via the queue's `x-dead-letter-routing-key`. |
-| Exchange `notification.dlx` (fanout) → Queue `notification_service_dlq` | Final resting place for messages that exhausted `retry.maxAttempts` (default 3). |
+| Queue `notification_service_events` | Queue chính, mọi service upstream publish vào đây (durable, `noAck=false`). Dead-letter exchange trỏ đến `notification.dlx`. |
+| Exchange `notification.retry` (fanout) → Queue `notification_service_retry` | Giữ message retry trong `retry.intervalMs` (mặc định 5 phút). Khi TTL hết, RabbitMQ route message ngược lại `notification_service_events` thông qua `x-dead-letter-routing-key`. |
+| Exchange `notification.dlx` (fanout) → Queue `notification_service_dlq` | Nơi “an nghỉ” cuối cùng cho message đã hết số lần retry (`retry.maxAttempts`, mặc định 3). |
 
-`MessagingController` wraps every handler in `runWithRetry()`:
+`MessagingController` bọc mọi handler bằng helper `runWithRetry()` với luật:
 
-1. Increment `notification_messages_consumed_total{event_type}`.
-2. Invoke the handler.
-3. On success → `channel.ack(message)`.
-4. On error:
-   - If `retryCount + 1 <= retry.maxAttempts` → ack the original message and publish a new envelope to `notification.retry` with `retryCount = retryCount + 1`. The message reappears in the main queue after the TTL.
-   - Else → `channel.nack(message, false, false)` which dead-letters the message to `notification_service_dlq`.
+1. Tăng `notification_messages_consumed_total{event_type}`.
+2. Gọi handler thật sự.
+3. Nếu thành công → `channel.ack(message)`.
+4. Nếu lỗi:
+   - Khi `retryCount + 1 <= retry.maxAttempts` → ack message gốc và publish envelope mới vào `notification.retry` với `retryCount = retryCount + 1`. Sau khi TTL hết, message tự quay lại queue chính.
+   - Khi vượt ngưỡng → `channel.nack(message, false, false)` để route message vào `notification_service_dlq`.
 
-### 2.2 Delivery dispatch
+### 2.2 Dispatch tới các kênh
 
-Every "send-*" use case delegates to `NotificationDispatcher.dispatch({ channels, ... })`:
+Mỗi use case "send-*" đều ủy quyền cho `NotificationDispatcher.dispatch({ channels, ... })`:
 
-1. Create a `Notification` row with `status = QUEUED` for each requested channel.
-2. Run channel-specific delivery:
-   - `IN_APP` → already persisted; status flips to `DELIVERED`.
-   - `EMAIL` → `MailProvider.send(...)` (nodemailer → SMTP host).
-   - `PUSH` → fetch all `DeviceToken`s for the user, call `PushProvider.sendToTokens(...)`. Tokens that FCM rejects as `messaging/registration-token-not-registered` (or similar) are deleted automatically.
-3. On success → update the row to `DELIVERED` with `deliveredAt = now()`, bump the success metric.
-4. On failure → update to `FAILED` with `errorMessage`, bump the failure metric, rethrow so the messaging layer can retry.
+1. Tạo một row `Notification` với `status = QUEUED` cho từng kênh được yêu cầu.
+2. Thực thi gửi theo từng kênh:
+   - `IN_APP` → đã được persist sẵn, status chuyển thành `DELIVERED` ngay.
+   - `EMAIL` → gọi `MailProvider.send(...)` (nodemailer → host SMTP).
+   - `PUSH` → lấy toàn bộ `DeviceToken` của user, gọi `PushProvider.sendToTokens(...)`. Token nào bị FCM trả về `messaging/registration-token-not-registered` (hoặc lỗi tương đương) sẽ bị xóa tự động khỏi DB.
+3. Khi gửi thành công → cập nhật row thành `DELIVERED` kèm `deliveredAt = now()`, tăng metric success.
+4. Khi gửi thất bại → cập nhật `FAILED` kèm `errorMessage`, tăng metric failure, rồi rethrow để tầng messaging xử lý retry.
 
-### 2.3 Academic warning HTTP → event flow
+### 2.3 Luồng cảnh báo học tập (HTTP → event)
 
 ```
 ADMIN → POST /admin/academic-warnings
-       └─► NotificationController publishes notification.academic-warning.queued
-                                  └─► MessagingController consumes it
+       └─► NotificationController publish notification.academic-warning.queued
+                                  └─► MessagingController tiêu thụ event đó
                                        └─► SendAcademicWarningUseCase
-                                            ├─ creates AcademicWarning row
-                                            └─ dispatches IN_APP + PUSH (+ EMAIL)
+                                            ├─ tạo row AcademicWarning
+                                            └─ dispatch IN_APP + PUSH (+ EMAIL nếu có)
 ```
 
-HTTP responds with `202 Accepted` immediately so the admin UI is not blocked by SMTP latency.
+HTTP trả về `202 Accepted` ngay, nhờ vậy giao diện admin không bị treo bởi độ trễ SMTP.
 
 ---
 
-## 3. Endpoints
+## 3. Endpoint HTTP
 
-| Method | Path | Roles | Notes |
+| Method | Path | Role | Ghi chú |
 | --- | --- | --- | --- |
-| `POST` | `/admin/academic-warnings` | `ADMIN`, `CENTER_MANAGER`, `INSTRUCTOR` | Returns `202 Accepted`. Delivery is asynchronous. |
-| `GET` | `/notifications/me` | any authenticated user | Paginated list of own notifications. Newest first. |
-| `PATCH` | `/notifications/:id/read` | any authenticated user | Mark a single notification as read. Ownership enforced via JWT `sub`. |
-| `POST` | `/notifications/devices` | any authenticated user | Register/upsert an FCM/APNs device token. |
-| `DELETE` | `/notifications/devices/:token` | any authenticated user | Unregister a device token. |
-| `GET` | `/metrics` | internal (no auth) | Prometheus scrape endpoint. |
-| `GET` | `/docs` / `/docs-json` | internal | Swagger UI (also reachable as `/notification-service/docs` through Kong). |
+| `POST` | `/admin/academic-warnings` | `ADMIN`, `CENTER_MANAGER`, `INSTRUCTOR` | Trả về `202 Accepted`. Việc gửi là bất đồng bộ. |
+| `GET` | `/notifications/me` | mọi user đã đăng nhập | Liệt kê thông báo của chính mình, mới nhất trước, có phân trang. |
+| `PATCH` | `/notifications/:id/read` | mọi user đã đăng nhập | Đánh dấu một thông báo là đã đọc. Quyền sở hữu được kiểm qua JWT `sub`. |
+| `POST` | `/notifications/devices` | mọi user đã đăng nhập | Đăng ký / upsert một device token FCM/APNs. |
+| `DELETE` | `/notifications/devices/:token` | mọi user đã đăng nhập | Hủy đăng ký device token. |
+| `GET` | `/metrics` | nội bộ (không cần auth) | Endpoint cho Prometheus scrape. |
+| `GET` | `/docs` / `/docs-json` | nội bộ | Swagger UI (cũng có thể truy cập qua Kong tại `/notification-service/docs`). |
 
-Full request/response schemas are in [`guides/api/api-spec-notification.md`](../../guides/api/api-spec-notification.md).
+Mô tả chi tiết request/response nằm trong [`guides/api/api-spec-notification.md`](../../guides/api/api-spec-notification.md).
 
 ---
 
-## 4. Events
+## 4. Event
 
-### Consumed (`notification_service_events`)
+### Event được tiêu thụ (`notification_service_events`)
 
-| Event | Payload (key fields) | Resulting channels |
+| Event | Payload (field chính) | Kênh kích hoạt |
 | --- | --- | --- |
 | `identity.user.created` | `userId`, `email`, `fullName?` | IN_APP, EMAIL |
 | `identity.user.password-reset-requested` | `userId`, `email`, `resetUrl` | EMAIL |
-| `exam.session.passed` | `studentId`/`userId`, `email?`, `sessionId?`, `licenseCategory?`, `score?` | IN_APP, PUSH (+ EMAIL if `email` present) |
-| `exam.session.failed` | same as above | same as above |
-| `notification.academic-warning.queued` | `studentId`, `reason`, `severity`, `message`, `createdById`, `studentEmail?` | IN_APP, PUSH (+ EMAIL if `studentEmail` present) |
-| `course.updated` | `recipientId`, `recipientEmail?`, `courseId`, `courseTitle`, `updateSummary` | IN_APP, PUSH (+ EMAIL if `recipientEmail` present) |
+| `exam.session.passed` | `studentId`/`userId`, `email?`, `sessionId?`, `licenseCategory?`, `score?` | IN_APP, PUSH (+ EMAIL nếu có `email`) |
+| `exam.session.failed` | giống như trên | giống như trên |
+| `notification.academic-warning.queued` | `studentId`, `reason`, `severity`, `message`, `createdById`, `studentEmail?` | IN_APP, PUSH (+ EMAIL nếu có `studentEmail`) |
+| `course.updated` | `recipientId`, `recipientEmail?`, `courseId`, `courseTitle`, `updateSummary` | IN_APP, PUSH (+ EMAIL nếu có `recipientEmail`) |
 
-All consumed events accept an optional `retryCount` field which is set by the retry publisher when a message is replayed.
+Tất cả các event này đều cho phép kèm field `retryCount` (do retry publisher set khi replay).
 
-### Published
+### Event được phát hành
 
-| Event | Trigger | Target queue |
+| Event | Khi nào trigger | Queue đích |
 | --- | --- | --- |
-| `notification.academic-warning.queued` | `POST /admin/academic-warnings` | `notification_service_events` (self) |
+| `notification.academic-warning.queued` | `POST /admin/academic-warnings` | `notification_service_events` (chính service này) |
 
-To publish a new event from another service, set the client's queue to `notification_service_events` and emit the matching pattern. Example (identity-service):
+Khi muốn publish event mới từ service khác, đặt `queue` trong ClientsModule là `notification_service_events` và emit đúng pattern. Ví dụ trong identity-service:
 
 ```ts
 ClientsModule.register([
@@ -192,65 +192,65 @@ client.emit('identity.user.created', { userId, email, fullName });
 
 ---
 
-## 5. Configuration (Consul KV)
+## 5. Cấu hình (Consul KV)
 
-All config is loaded by `@repo/common`'s `ConsulConfigFactory`. Keys live under `config/<env>/notification-service/`. The seeding lives in [`docker/consul/init.sh`](../../docker/consul/init.sh).
+Toàn bộ config do `ConsulConfigFactory` của `@repo/common` nạp. Các key nằm dưới `config/<env>/notification-service/`. Phần seed thực tế ở [`docker/consul/init.sh`](../../docker/consul/init.sh).
 
-| Key | Default | Notes |
+| Key | Mặc định | Ghi chú |
 | --- | --- | --- |
-| `port` | `3000` (docker) / `3006` (local) | HTTP port |
-| `database.url` | `postgresql://user:password@db-notification:5432/notification_db` | Postgres connection string |
+| `port` | `3000` (docker) / `3006` (local) | Cổng HTTP |
+| `database.url` | `postgresql://user:password@db-notification:5432/notification_db` | Connection string Postgres |
 | `rabbitmq.url` | `amqp://rabbitmq:5672` / `amqp://localhost:5672` | RabbitMQ |
 | `keycloak.authServerUrl` / `realm` / `clientId` / `clientSecret` | `${KEYCLOAK_CLIENT_SECRET}` | Auth |
-| `smtp.host` | `mailpit` (docker) / `localhost` (local) | Override with `NOTIFICATION_SMTP_HOST` / `NOTIFICATION_SMTP_HOST_LOCAL` |
-| `smtp.port` | `1025` | Mailpit SMTP |
-| `smtp.user` / `smtp.pass` | empty | Required only when pointing at a real provider |
-| `smtp.from` | `no-reply@luyen-thi-lai-xe.local` | Envelope sender |
-| `push.fcmCredentials` | empty | JSON-serialized Firebase service account. When empty, push is logged and skipped. |
-| `retry.maxAttempts` | `3` | Stop retrying after this many attempts |
-| `retry.intervalMs` | `300000` (5 min) | Retry queue TTL |
+| `smtp.host` | `mailpit` (docker) / `localhost` (local) | Có thể override qua `NOTIFICATION_SMTP_HOST` / `NOTIFICATION_SMTP_HOST_LOCAL` |
+| `smtp.port` | `1025` | Cổng SMTP của Mailpit |
+| `smtp.user` / `smtp.pass` | rỗng | Chỉ cần khi dùng provider SMTP thật |
+| `smtp.from` | `no-reply@luyen-thi-lai-xe.local` | Địa chỉ envelope sender |
+| `push.fcmCredentials` | rỗng | JSON service account của Firebase. Khi rỗng, push được log và bỏ qua. |
+| `retry.maxAttempts` | `3` | Số lần retry tối đa |
+| `retry.intervalMs` | `300000` (5 phút) | TTL của retry queue |
 
-### Quick seeding from root
+### Seed nhanh từ root
 
 ```bash
-# Docker stack
+# Stack Docker
 NOTIFICATION_SMTP_HOST=mailpit NOTIFICATION_RETRY_INTERVAL_MS=60000 \
 NOTIFICATION_FCM_CREDENTIALS="$(cat firebase-service-account.json)" \
 npm run consul:seed
 
-# Hybrid dev (host services + Docker infra)
+# Hybrid dev (service chạy host + infra trong Docker)
 npm run consul:seed:local
 ```
 
 ---
 
-## 6. Local Development
+## 6. Chạy local
 
 ```bash
-# 1) Start infra (Postgres, RabbitMQ, Consul, Mailpit, Keycloak, Kong, Redis)
+# 1) Khởi động infra (Postgres, RabbitMQ, Consul, Mailpit, Keycloak, Kong, Redis)
 npm run infra:up
 
-# 2) Seed Consul with development-local config
+# 2) Seed Consul cho môi trường development-local
 npm run consul:seed:local
 
-# 3) Apply migrations
+# 3) Áp migration
 npm --workspace=apps/notification-service run prisma:generate
 npm --workspace=apps/notification-service run db:migrate -- --name local
 
-# 4) Run the service
+# 4) Chạy service
 npm --workspace=apps/notification-service run start:dev
-# → listening on http://localhost:3006
+# → đang lắng nghe tại http://localhost:3006
 # → Swagger:  http://localhost:3006/docs
 # → Metrics:  http://localhost:3006/metrics
 # → Mailpit:  http://localhost:8025
 ```
 
-Useful URLs:
+URL hữu ích:
 
-| What | URL |
+| Mục đích | URL |
 | --- | --- |
 | Swagger | http://localhost:3006/docs |
-| Mailpit (caught emails) | http://localhost:8025 |
+| Mailpit (email đã bắt) | http://localhost:8025 |
 | RabbitMQ UI | http://localhost:15672 (`guest`/`guest`) |
 | Consul UI | http://localhost:8500 |
 | Prometheus metrics | http://localhost:3006/metrics |
@@ -259,18 +259,18 @@ Useful URLs:
 
 ## 7. Database
 
-Models (see [`prisma/schema.prisma`](./prisma/schema.prisma)):
+Các model (xem [`prisma/schema.prisma`](./prisma/schema.prisma)):
 
-- `Notification` — one row per delivered channel. `status` tracks delivery, `eventType` ties it back to the originating event. Indexed by `(userId, isRead, createdAt)` and `(userId, status)`.
-- `AcademicWarning` — audit record created by the SendAcademicWarning use case.
-- `DeviceToken` — one row per device token; `token` is unique; tokens that FCM declares invalid are pruned automatically.
+- `Notification` — mỗi row tương ứng một kênh đã/đang gửi. `status` theo dõi trạng thái gửi, `eventType` gắn lại với event nguồn. Index theo `(userId, isRead, createdAt)` và `(userId, status)`.
+- `AcademicWarning` — bản ghi audit do `SendAcademicWarningUseCase` tạo ra.
+- `DeviceToken` — mỗi row một device token; `token` là unique; token bị FCM báo invalid sẽ bị tự xóa.
 
-Enums:
+Enum:
 
 - `NotificationType`: `IN_APP`, `EMAIL`, `PUSH`, `SMS`.
 - `NotificationStatus`: `PENDING`, `QUEUED`, `DELIVERED`, `FAILED`.
 
-Migration commands (run from repo root):
+Lệnh migration (chạy từ root repo):
 
 ```bash
 npm --workspace=apps/notification-service run prisma:generate
@@ -280,38 +280,38 @@ npm --workspace=apps/notification-service run db:deploy     # docker / CI
 
 ---
 
-## 8. Observability
+## 8. Quan sát (observability)
 
-The service exposes Prometheus metrics at `/metrics`:
+Service expose metric Prometheus tại `/metrics`:
 
-| Metric | Type | Labels |
+| Metric | Kiểu | Label |
 | --- | --- | --- |
 | `notification_messages_consumed_total` | counter | `event_type` |
 | `notification_delivery_success_total` | counter | `channel`, `event_type` |
 | `notification_delivery_failed_total` | counter | `channel`, `event_type` |
 | `notification_dlq_depth` | gauge | – |
 
-Logs are routed through the shared `@repo/common` Nest logger. Important log lines:
+Log đi qua logger chung của `@repo/common`. Một số dòng log đáng chú ý:
 
-- `RabbitMQ topology ready: …` on boot
-- `SMTP transporter ready (host=… port=…)`
-- `Firebase Admin initialized for FCM push delivery` (or a warning if `push.fcmCredentials` is empty)
-- `Scheduled retry #N for <event>` for every retry envelope published
-- `Giving up on <event> after N retries: …; routing to DLQ`
-
----
-
-## 9. Operational Notes
-
-- **Topology survives restarts.** Queues, exchanges, and DLQ are asserted on every boot with the same options; RabbitMQ keeps existing ones. To change `retry.intervalMs`, delete the retry queue first (or rename it) — TTL is a queue argument and cannot be modified in place.
-- **DLQ inspection.** Use the RabbitMQ UI ([http://localhost:15672](http://localhost:15672)) to peek at messages in `notification_service_dlq`. Re-publish them to `notification_service_events` after fixing the underlying cause if needed.
-- **Mailpit-only emails in dev.** When `smtp.host` points at Mailpit, no real email leaves the host. The browser UI at `http://localhost:8025` shows the entire SMTP traffic.
-- **FCM without credentials.** If `push.fcmCredentials` is empty (default), the FCM provider logs a warning and short-circuits; nothing is sent. This is intentional so dev environments boot without Firebase secrets.
-- **Async warning endpoint.** `POST /admin/academic-warnings` returns 202 immediately. To verify delivery, look at `GET /notifications/me` for the student or watch the worker logs.
+- `RabbitMQ topology sẵn sàng: …` khi khởi động
+- `Đã sẵn sàng kết nối SMTP (host=… port=…)`
+- `Firebase Admin đã khởi tạo cho việc gửi push FCM` (hoặc warning nếu `push.fcmCredentials` rỗng)
+- `Đã đặt lịch retry lần #N cho <event>` mỗi khi publish envelope retry
+- `Dừng xử lý <event> sau N lần retry: …; chuyển sang DLQ` khi vượt ngưỡng
 
 ---
 
-## 10. Checklist Before Merging
+## 9. Lưu ý vận hành
+
+- **Topology bền giữa các lần restart.** Queue, exchange và DLQ được khai báo lại mỗi lần khởi động với cùng option; RabbitMQ giữ nguyên cái đã tồn tại. Muốn đổi `retry.intervalMs`, phải xóa retry queue trước (hoặc đặt tên khác) — vì TTL là argument của queue và không thể sửa tại chỗ.
+- **Kiểm tra DLQ.** Vào RabbitMQ UI ([http://localhost:15672](http://localhost:15672)) để xem message trong `notification_service_dlq`. Sau khi fix nguyên nhân gốc, có thể publish ngược lại `notification_service_events` để xử lý tiếp.
+- **Email chỉ ở Mailpit khi dev.** Khi `smtp.host` trỏ về Mailpit, không có email thật nào rời máy. UI tại `http://localhost:8025` hiển thị đầy đủ traffic SMTP.
+- **FCM không có credential.** Khi `push.fcmCredentials` rỗng (mặc định), FCM provider chỉ log cảnh báo và short-circuit; không gửi gì cả. Điều này cố ý để dev environment không cần secret Firebase mới chạy được.
+- **Endpoint cảnh báo bất đồng bộ.** `POST /admin/academic-warnings` trả về 202 ngay lập tức. Muốn xác nhận đã gửi tới học viên, check `GET /notifications/me` của học viên đó hoặc xem log của worker.
+
+---
+
+## 10. Checklist trước khi merge
 
 ```bash
 npm --workspace=apps/notification-service run prisma:generate
@@ -321,4 +321,4 @@ npx turbo run check-types
 docker compose config --quiet
 ```
 
-If you change endpoints, DTOs, or Consul keys, also update [`guides/api/api-spec-notification.md`](../../guides/api/api-spec-notification.md) and [`guides/consul/WORKFLOW.md`](../../guides/consul/WORKFLOW.md).
+Nếu sửa endpoint, DTO, hoặc key Consul, cập nhật thêm [`guides/api/api-spec-notification.md`](../../guides/api/api-spec-notification.md) và [`guides/consul/WORKFLOW.md`](../../guides/consul/WORKFLOW.md).

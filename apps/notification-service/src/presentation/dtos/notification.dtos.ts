@@ -33,7 +33,7 @@ export class AcademicWarningAcceptedResponseDto {
 
   @ApiProperty({
     description:
-      'Indicates the warning was queued asynchronously for delivery to the student.',
+      'Cảnh báo đã được đưa vào hàng đợi để gửi bất đồng bộ cho học viên.',
   })
   message!: string;
 }

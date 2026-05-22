@@ -227,13 +227,13 @@ export class MessagingController {
       const reason = (error as Error).message;
       if (nextRetry > maxAttempts) {
         this.logger.error(
-          `Giving up on ${eventPattern} after ${retryCount} retries: ${reason}; routing to DLQ`,
+          `Dừng xử lý ${eventPattern} sau ${retryCount} lần retry: ${reason}; chuyển sang DLQ`,
         );
         channel.nack(message, false, false);
         return;
       }
       this.logger.warn(
-        `Failed handling ${eventPattern} (attempt ${nextRetry}/${maxAttempts}): ${reason}; scheduling retry`,
+        `Xử lý ${eventPattern} thất bại (lần ${nextRetry}/${maxAttempts}): ${reason}; đặt lịch retry`,
       );
       try {
         await this.retryPublisher.publishRetry({
@@ -244,7 +244,7 @@ export class MessagingController {
         channel.ack(message);
       } catch (publishError) {
         this.logger.error(
-          `Failed to schedule retry for ${eventPattern}: ${(publishError as Error).message}; routing to DLQ`,
+          `Đặt lịch retry cho ${eventPattern} thất bại: ${(publishError as Error).message}; chuyển sang DLQ`,
         );
         channel.nack(message, false, false);
       }

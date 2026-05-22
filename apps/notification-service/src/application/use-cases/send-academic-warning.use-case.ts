@@ -57,7 +57,7 @@ export class SendAcademicWarningUseCase {
       eventType: 'notification.academic-warning.created',
       userId: input.studentId,
       recipientEmail: input.studentEmail,
-      title: `Academic warning: ${input.severity}`,
+      title: `Cảnh báo học tập: ${input.severity}`,
       body: input.message,
       data: {
         warningId: warning.id,

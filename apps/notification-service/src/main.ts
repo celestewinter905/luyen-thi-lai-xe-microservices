@@ -27,7 +27,7 @@ async function bootstrap() {
   setupMicroserviceSwagger(app, {
     title: 'Notification Service API',
     description:
-      'Asynchronous notification dispatch (in-app, email via SMTP/Mailpit, FCM push). Consumes RabbitMQ events with retry-with-delay and DLQ.',
+      'Dịch vụ gửi thông báo bất đồng bộ (in-app, email qua SMTP/Mailpit, push qua FCM). Tiêu thụ event từ RabbitMQ với cơ chế retry có độ trễ và DLQ.',
   });
 
   app.connectMicroservice<MicroserviceOptions>({
@@ -42,7 +42,7 @@ async function bootstrap() {
 
   await app.startAllMicroservices();
   await app.listen(port);
-  console.log(`✓ Notification Service listening on port ${port}`);
+  console.log(`✓ Notification Service đang lắng nghe tại cổng ${port}`);
   console.log(`  Metrics: http://localhost:${port}/metrics`);
 }
 void bootstrap();

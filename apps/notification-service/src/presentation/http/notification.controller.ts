@@ -43,7 +43,7 @@ export class NotificationController {
   @Roles({ roles: ['realm:ADMIN', 'realm:CENTER_MANAGER', 'realm:INSTRUCTOR'] })
   @ApiOperation({
     summary:
-      'Queue an academic warning notification for a student (async, returns 202).',
+      'Đưa cảnh báo học tập của học viên vào hàng đợi (bất đồng bộ, trả về 202).',
   })
   async sendAcademicWarning(
     @AuthenticatedUser() user: JwtPayload,
@@ -59,7 +59,7 @@ export class NotificationController {
     return {
       status: 'ACCEPTED',
       message:
-        'Academic warning queued; the student will be notified asynchronously.',
+        'Cảnh báo học tập đã được đưa vào hàng đợi; học viên sẽ nhận thông báo bất đồng bộ.',
     };
   }
 
@@ -72,7 +72,7 @@ export class NotificationController {
       'realm:STUDENT',
     ],
   })
-  @ApiOperation({ summary: 'List current user notifications' })
+  @ApiOperation({ summary: 'Liệt kê thông báo của người dùng hiện tại' })
   async listMine(
     @AuthenticatedUser() user: JwtPayload,
     @Query() query: ListNotificationsQueryDto,
@@ -94,7 +94,7 @@ export class NotificationController {
       'realm:STUDENT',
     ],
   })
-  @ApiOperation({ summary: 'Mark a notification as read' })
+  @ApiOperation({ summary: 'Đánh dấu một thông báo là đã đọc' })
   async markRead(
     @AuthenticatedUser() user: JwtPayload,
     @Param('id') id: string,

@@ -33,7 +33,7 @@ export class SmtpMailProvider extends MailProvider implements OnModuleInit {
       secure: port === 465,
       auth,
     });
-    this.logger.log(`SMTP transporter ready (host=${host} port=${port})`);
+    this.logger.log(`Đã sẵn sàng kết nối SMTP (host=${host} port=${port})`);
   }
 
   async send(input: SendMailInput): Promise<void> {
@@ -44,6 +44,6 @@ export class SmtpMailProvider extends MailProvider implements OnModuleInit {
       text: input.text,
       html: input.html,
     });
-    this.logger.log(`Email sent to ${input.to} (id=${info.messageId})`);
+    this.logger.log(`Đã gửi email tới ${input.to} (id=${info.messageId})`);
   }
 }
